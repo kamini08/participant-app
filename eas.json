@@ -47,6 +47,13 @@
         "API_URL": "https://api.aiia-ctms.in",
         "WS_URL": "wss://api.aiia-ctms.in"
       }
+    },
+    "production-apk": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
