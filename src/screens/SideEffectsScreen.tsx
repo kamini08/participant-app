@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { apiRequest } from '../services/api';
 
 interface SideEffect {
   id: string;
@@ -19,6 +20,14 @@ interface SideEffect {
   label: string;
   selected: boolean;
   severity: 1 | 2 | 3 | 4 | 5;
+}
+
+interface ReportedSideEffect {
+  id: string;
+  term: string;
+  severity: string;
+  status: string;
+  createdAt: string;
 }
 
 export default function SideEffectsScreen() {
@@ -38,6 +47,21 @@ export default function SideEffectsScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [showUrgentModal, setShowUrgentModal] = useState(false);
   const [urgentText, setUrgentText] = useState('');
+  const [reports, setReports] = useState<ReportedSideEffect[]>([]);
+
+  useEffect(() => {
+    void loadReports();
+  }, []);
+
+  const loadReports = async () => {
+    try {
+      const { sideEffects } = await apiRequest<{ sideEffects: ReportedSideEffect[] }>('/api/participant-app/side-effects');
+      setReports(sideEffects);
+    } catch (error) {
+      console.error('Failed to load participant side effects:', error);
+      Alert.alert('Could not load your reports', error instanceof Error ? error.message : 'Please try again.');
+    }
+  };
 
   const toggleSideEffect = (id: string) => {
     setSideEffects(prev => prev.map(se => 
@@ -57,13 +81,28 @@ export default function SideEffectsScreen() {
       Alert.alert(t('selectSideEffects'));
       return;
     }
+    if (otherSelected && !otherText.trim()) {
+      Alert.alert('Describe the other symptom before submitting.');
+      return;
+    }
     setSubmitting(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    Alert.alert('Success', 'Side effects reported successfully');
-    setSubmitting(false);
-    setSideEffects(prev => prev.map(se => ({ ...se, selected: false, severity: 1 })));
-    setOtherText('');
-    setOtherSelected(false);
+    try {
+      const reportsToSave = selected.map(se => ({ term: se.label, severity: se.severity }));
+      if (otherSelected) reportsToSave.push({ term: otherText.trim(), severity: 1 });
+      await apiRequest('/api/participant-app/side-effects', {
+        method: 'POST',
+        body: { reports: reportsToSave },
+      });
+      await loadReports();
+      Alert.alert('Report submitted', 'Your symptom report was saved to your study record.');
+      setSideEffects(prev => prev.map(se => ({ ...se, selected: false, severity: 1 })));
+      setOtherText('');
+      setOtherSelected(false);
+    } catch (error) {
+      Alert.alert('Could not submit report', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleUrgentConcern = () => {
@@ -76,11 +115,20 @@ export default function SideEffectsScreen() {
       return;
     }
     setSubmitting(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    Alert.alert('Urgent Concern Reported', 'Your concern has been escalated to the study team immediately');
-    setShowUrgentModal(false);
-    setUrgentText('');
-    setSubmitting(false);
+    try {
+      await apiRequest('/api/participant-app/side-effects', {
+        method: 'POST',
+        body: { reports: [], urgentDetails: urgentText.trim() },
+      });
+      await loadReports();
+      Alert.alert('Concern recorded', 'Your study team has been notified in the CTMS. If this is a medical emergency, contact local emergency services now.');
+      setShowUrgentModal(false);
+      setUrgentText('');
+    } catch (error) {
+      Alert.alert('Could not submit concern', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getSeverityLabel = (severity: number) => {
@@ -211,7 +259,7 @@ export default function SideEffectsScreen() {
               <Text style={styles.urgentButtonText}>🚨 {t('urgentConcern')}</Text>
             </TouchableOpacity>
             <Text style={styles.urgentNote}>
-              Use this for immediate medical concerns that require urgent attention from the study team.
+              Your study team will receive a CTMS alert. For an emergency, contact local emergency services now.
             </Text>
           </View>
 
@@ -226,6 +274,23 @@ export default function SideEffectsScreen() {
               <Text style={styles.submitButtonText}>{t('reportSideEffect')}</Text>
             )}
           </TouchableOpacity>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your recent reports</Text>
+            {reports.length === 0 ? (
+              <Text style={styles.urgentNote}>No reports have been submitted yet.</Text>
+            ) : reports.map(report => (
+              <View key={report.id} style={styles.reportRow}>
+                <View style={styles.reportDetails}>
+                  <Text style={styles.sideEffectName}>{report.term}</Text>
+                  <Text style={styles.urgentNote}>
+                    {report.severity.replaceAll('_', ' ')} · {new Date(report.createdAt).toLocaleDateString()}
+                  </Text>
+                </View>
+                <Text style={styles.reportStatus}>{report.status.replaceAll('_', ' ')}</Text>
+              </View>
+            ))}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -239,7 +304,7 @@ export default function SideEffectsScreen() {
               </TouchableOpacity>
             </View>
             <Text style={styles.modalMessage}>
-              Describe your urgent medical concern. This will be immediately escalated to the study team.
+              Describe your concern. This creates an urgent CTMS alert for your study team. For a medical emergency, contact local emergency services now.
             </Text>
             <TextInput
               style={styles.modalInput}
@@ -530,6 +595,23 @@ const styles = StyleSheet.create({
   modalSubmitText: {
     color: 'white',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  reportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
+    gap: 12,
+  },
+  reportDetails: {
+    flex: 1,
+  },
+  reportStatus: {
+    color: '#475569',
+    fontSize: 12,
     fontWeight: '600',
   },
 });

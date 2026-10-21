@@ -1,9 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, Button, SafeAreaView, ScrollView, Alert } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, SafeAreaView, ScrollView, Alert } from "react-native";
 
 export default function EnrollmentScreen() {
   const [name, setName] = useState("");
   const [studyId, setStudyId] = useState("1");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [phone, setPhone] = useState("");
 
   const studies = [
     { id: "1", name: "Ayurveda Diabetes Trial" },
@@ -25,12 +27,21 @@ export default function EnrollmentScreen() {
 
         <View style={{ borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 12 }}>
           {studies.map((study) => (
-            <Button
+            <TouchableOpacity
               key={study.id}
-              title={study.name}
+              accessibilityRole="button"
               onPress={() => setStudyId(study.id)}
-              style={study.id === study.id ? { backgroundColor: "#3b82f6", color: "white" } : {}}
-            />
+              style={{
+                backgroundColor: study.id === studyId ? "#3b82f6" : "#ffffff",
+                borderRadius: 6,
+                marginBottom: 8,
+                padding: 12,
+              }}
+            >
+              <Text style={{ color: study.id === studyId ? "#ffffff" : "#17324d" }}>
+                {study.name}
+              </Text>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -41,29 +52,28 @@ export default function EnrollmentScreen() {
         <TextInput
           placeholder="Full Name"
           value={name}
-          onChangeText.setName
+          onChangeText={setName}
           style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 6, padding: 10, marginBottom: 10 }}
         />
 
         <TextInput
           placeholder="Date of Birth (YYYY-MM-DD)"
-          keyboardType="number-pad"
-          value={""}
-          onChangeText={()}
+          value={dateOfBirth}
+          onChangeText={setDateOfBirth}
           style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 6, padding: 10, marginBottom: 10 }}
         />
 
         <TextInput
           placeholder="Contact Number"
-          keyboardType="phone"
-          value={""}
-          onChangeText={()}
+          keyboardType="phone-pad"
+          value={phone}
+          onChangeText={setPhone}
           style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 6, padding: 10, marginBottom: 15 }}
         />
 
-        <Button
-          title="Submit Enrollment"
-          onPress=() => {
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => {
             if (name.trim()) {
               Alert.alert(
                 "Enrollment Successful",
@@ -72,9 +82,11 @@ export default function EnrollmentScreen() {
             } else {
               Alert.alert("Error", "Please enter your name");
             }
-          }
-          style={{ backgroundColor: "#10b981", padding: 12, borderRadius: 6 }}
-        />
+          }}
+          style={{ backgroundColor: "#10b981", padding: 12, borderRadius: 6, alignItems: "center" }}
+        >
+          <Text style={{ color: "#ffffff", fontWeight: "600" }}>Submit Enrollment</Text>
+        </TouchableOpacity>
 
         <Text style={{ marginTop: 20, fontSize: 12, color: "#666" }}>
           By enrolling, you confirm you have read and agree to the informed consent terms.

@@ -1,104 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Image,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
 import { SUPPORTED_LANGUAGES } from '../constants/languages';
+import { useAuth } from '../context/AuthContext';
 
-export default function LoginScreen({ navigation }: any) {
-  const { login, loginWithOtp, verifyOtp, authenticateWithBiometric, t, isLoading, language, setLanguage } = useAuth();
+export default function LoginScreen() {
+  const { language, login, setLanguage, t } = useAuth();
+  const [participantId, setParticipantId] = useState('');
   const [pin, setPin] = useState('');
-  const [otp, setOtp] = useState('');
-  const [phone, setPhone] = useState('+91 98765 43210');
-  const [showOtp, setShowOtp] = useState(false);
-  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  useEffect(() => {
-    if (resendTimer > 0) {
-      const timer = setInterval(() => setResendTimer(prev => prev - 1), 1000);
-      return () => clearInterval(timer);
-    }
-  }, [resendTimer]);
-
-  const handlePinLogin = async () => {
-    if (pin.length < 4) {
-      Alert.alert(t('invalidPin'));
-      return;
-    }
+  const handleLogin = async () => {
+    if (!participantId.trim() || pin.length !== 4) return;
     setIsAuthenticating(true);
-    const success = await login(pin);
-    if (success) {
-      navigation.replace('MainTabs');
-    }
+    await login(participantId, pin);
     setIsAuthenticating(false);
   };
-
-  const handleSendOtp = async () => {
-    setIsAuthenticating(true);
-    const success = await loginWithOtp(phone);
-    if (success) {
-      setShowOtp(true);
-      setOtpSent(true);
-      setResendTimer(60);
-    }
-    setIsAuthenticating(false);
-  };
-
-  const handleVerifyOtp = async () => {
-    if (otp.length !== 6) {
-      Alert.alert(t('invalidOtp'));
-      return;
-    }
-    setIsAuthenticating(true);
-    const success = await verifyOtp(otp);
-    if (success) {
-      navigation.replace('MainTabs');
-    }
-    setIsAuthenticating(false);
-  };
-
-  const handleBiometricLogin = async () => {
-    setShowBiometricPrompt(true);
-    setIsAuthenticating(true);
-    const success = await authenticateWithBiometric();
-    if (success) {
-      navigation.replace('MainTabs');
-    }
-    setIsAuthenticating(false);
-    setShowBiometricPrompt(false);
-  };
-
-  const handleResendOtp = async () => {
-    if (resendTimer > 0) return;
-    setResendTimer(60);
-    await loginWithOtp(phone);
-  };
-
-  const handleLanguageChange = async (lang: any) => {
-    await setLanguage(lang.code);
-  };
-
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -106,7 +33,7 @@ export default function LoginScreen({ navigation }: any) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <View style={styles.logoContainer}>
               <Text style={styles.logo}>🏥</Text>
@@ -118,144 +45,67 @@ export default function LoginScreen({ navigation }: any) {
           <View style={styles.languageSelector}>
             <Text style={styles.languageLabel}>{t('changeLanguage')}</Text>
             <View style={styles.languageOptions}>
-              {SUPPORTED_LANGUAGES.map(lang => (
+              {SUPPORTED_LANGUAGES.map(option => (
                 <TouchableOpacity
-                  key={lang.code}
-                  style={[
-                    styles.languageOption,
-                    language === lang.code && styles.languageOptionActive,
-                  ]}
-                  onPress={() => handleLanguageChange(lang)}
+                  key={option.code}
+                  style={[styles.languageOption, language === option.code && styles.languageOptionActive]}
+                  onPress={() => setLanguage(option.code)}
                 >
                   <Text style={[
                     styles.languageOptionText,
-                    language === lang.code && styles.languageOptionTextActive,
+                    language === option.code && styles.languageOptionTextActive,
                   ]}>
-                    {lang.nativeName}
+                    {option.nativeName}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
 
-          {!showOtp ? (
-            <View style={styles.formContainer}>
-              <Text style={styles.sectionTitle}>{t('pin')}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder={t('enterPin')}
-                value={pin}
-                onChangeText={setPin}
-                secureTextEntry
-                keyboardType="numeric"
-                maxLength={6}
-                autoFocus
-              />
-
-              <TouchableOpacity
-                style={[styles.primaryButton, isAuthenticating && styles.buttonDisabled]}
-                onPress={handlePinLogin}
-                disabled={isAuthenticating}
-              >
-                {isAuthenticating ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>{t('verifyPin')}</Text>
-                )}
-              </TouchableOpacity>
-
-              <View style={styles.divider}>
-                <Text style={styles.dividerText}>OR</Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={handleSendOtp}
-                disabled={isAuthenticating}
-              >
-                <Text style={styles.secondaryButtonText}>{t('sendOtp')}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.biometricButton}
-                onPress={handleBiometricLogin}
-                disabled={isAuthenticating}
-              >
-                <Text style={styles.biometricButtonText}>
-                  {Platform.OS === 'ios' ? '🔐' : '👆'} {t('useFaceId')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.formContainer}>
-              <Text style={styles.sectionTitle}>{t('enterOtp')}</Text>
-              <Text style={styles.otpInfo}>{t('otpSent')}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder={t('enterOtp')}
-                value={otp}
-                onChangeText={setOtp}
-                keyboardType="numeric"
-                maxLength={6}
-                autoFocus
-              />
-
-              <TouchableOpacity
-                style={[styles.primaryButton, isAuthenticating && styles.buttonDisabled]}
-                onPress={handleVerifyOtp}
-                disabled={isAuthenticating}
-              >
-                {isAuthenticating ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>{t('verifyOtp')}</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.resendButton}
-                onPress={handleResendOtp}
-                disabled={resendTimer > 0}
-              >
-                <Text style={[
-                  styles.resendButtonText,
-                  resendTimer > 0 && styles.resendButtonTextDisabled,
-                ]}>
-                  {resendTimer > 0 ? `${t('resendOtp')} (${resendTimer}s)` : t('resendOtp')}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => { setShowOtp(false); setOtp(''); }}
-              >
-                <Text style={styles.backButtonText}>{t('login')}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          <View style={styles.formContainer}>
+            <Text style={styles.sectionTitle}>Participant sign in</Text>
+            <Text style={styles.helpText}>
+              Use the participant code and PIN provided by your study team.
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Participant code"
+              value={participantId}
+              onChangeText={setParticipantId}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              accessibilityLabel="Participant code"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder={t('enterPin')}
+              value={pin}
+              onChangeText={setPin}
+              secureTextEntry
+              keyboardType="numeric"
+              maxLength={4}
+              accessibilityLabel={t('enterPin')}
+            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              style={[styles.primaryButton, isAuthenticating && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={isAuthenticating || !participantId.trim() || pin.length !== 4}
+            >
+              {isAuthenticating ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Sign in securely</Text>
+              )}
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>AIIA CTMS v1.0</Text>
+            <Text style={styles.footerText}>AIIA CTMS · Participant portal</Text>
             <Text style={styles.footerText}>All India Institute of Ayurveda</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {showBiometricPrompt && (
-        <View style={styles.biometricModal}>
-          <View style={styles.biometricModalContent}>
-            <View style={styles.biometricIcon}>🔐</View>
-            <Text style={styles.biometricModalTitle}>{t('faceIdPopupTitle')}</Text>
-            <Text style={styles.biometricModalMessage}>{t('faceIdPopupMessage')}</Text>
-            <TouchableOpacity
-              style={styles.biometricModalButton}
-              onPress={() => setShowBiometricPrompt(false)}
-            >
-              <Text style={styles.biometricModalButtonText}>{t('enterPin')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -263,46 +113,49 @@ export default function LoginScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f7fb',
   },
   keyboardView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingVertical: 32,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 28,
   },
   logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#dbeafe',
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#e0f2ed',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
   },
   logo: {
-    fontSize: 48,
+    fontSize: 38,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '700',
-    color: '#1e293b',
+    color: '#17324d',
     marginBottom: 4,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#64748b',
+    textAlign: 'center',
   },
   languageSelector: {
-    marginBottom: 32,
+    marginBottom: 18,
     padding: 16,
-    backgroundColor: 'white',
+    backgroundColor: '#ffffff',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
@@ -318,16 +171,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
   },
   languageOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     backgroundColor: '#f8fafc',
   },
   languageOptionActive: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6',
+    backgroundColor: '#16836b',
+    borderColor: '#16836b',
   },
   languageOptionText: {
     fontSize: 14,
@@ -335,167 +188,61 @@ const styles = StyleSheet.create({
     color: '#374151',
   },
   languageOptionTextActive: {
-    color: 'white',
+    color: '#ffffff',
   },
   formContainer: {
     width: '100%',
-    backgroundColor: 'white',
+    backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 24,
+    padding: 22,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 16,
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#17324d',
+    marginBottom: 7,
+  },
+  helpText: {
+    color: '#64748b',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 18,
   },
   input: {
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
     paddingVertical: 14,
     fontSize: 16,
     color: '#1e293b',
-    marginBottom: 16,
+    marginBottom: 13,
     backgroundColor: '#f9fafb',
   },
   primaryButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#16836b',
     borderRadius: 10,
-    paddingVertical: 14,
+    paddingVertical: 15,
     alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 4,
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: 0.55,
   },
   primaryButtonText: {
-    color: 'white',
+    color: '#ffffff',
     fontSize: 16,
-    fontWeight: '600',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 16,
-  },
-  dividerText: {
-    flex: 1,
-    textAlign: 'center',
-    color: '#9ca3af',
-    fontSize: 14,
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#3b82f6',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  secondaryButtonText: {
-    color: '#3b82f6',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  biometricButton: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  biometricButtonText: {
-    color: '#374151',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  otpInfo: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginBottom: 16,
-    lineHeight: 20,
-  },
-  resendButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  resendButtonText: {
-    color: '#3b82f6',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  resendButtonTextDisabled: {
-    color: '#9ca3af',
-  },
-  backButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  backButtonText: {
-    color: '#6b7280',
-    fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '700',
   },
   footer: {
     alignItems: 'center',
-    paddingTop: 32,
-    paddingBottom: 16,
+    paddingTop: 24,
   },
   footerText: {
     fontSize: 12,
-    color: '#9ca3af',
-  },
-  biometricModal: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
-  biometricModalContent: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 32,
-    marginHorizontal: 32,
-    alignItems: 'center',
-  },
-  biometricIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  biometricModalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 8,
-  },
-  biometricModalMessage: {
-    fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  biometricModalButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 10,
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-  },
-  biometricModalButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#94a3b8',
+    marginBottom: 3,
   },
 });

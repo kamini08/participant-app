@@ -8,117 +8,69 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import * as ImagePicker from 'expo-image-picker';
-import * as MediaLibrary from 'expo-media-library';
+import { apiRequest } from '../services/api';
 
 interface MedicationDose {
   id: string;
-  name: string;
+  medicationName: string;
   dosage: string;
   frequency: string;
-  time: string;
-  taken: boolean;
-  videoUri?: string;
-  timestamp?: string;
+  scheduledTime: string;
+  actualTime: string | null;
+  status: string;
 }
 
 export default function MedicationVerificationScreen() {
   const { t } = useAuth();
   const [doses, setDoses] = useState<MedicationDose[]>([]);
-  const [recording, setRecording] = useState<string | null>(null);
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
-  const [showCamera, setShowCamera] = useState(false);
-  const [cameraType, setCameraType] = useState<'front' | 'back'>('front');
+  const [markingDose, setMarkingDose] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadMockDoses();
-    requestCameraPermission();
+    void loadMedications();
   }, []);
 
-  const requestCameraPermission = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    setCameraPermission(status === 'granted');
-    if (status !== 'granted') {
-      Alert.alert('Camera Permission Required', 'Please enable camera access to record medication verification videos');
+  const loadMedications = async () => {
+    try {
+      const { medications } = await apiRequest<{ medications: MedicationDose[] }>('/api/participant-app/medications');
+      setDoses(medications);
+    } catch (error) {
+      console.error('Failed to load participant medication schedule:', error);
+      Alert.alert('Could not load medication schedule', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const loadMockDoses = () => {
-    const today = new Date();
-    const formatTime = (hours: number, minutes: number) => 
-      `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-
-    setDoses([
-      { id: '1', name: 'Study Drug A', dosage: '50mg', frequency: 'Once daily', time: formatTime(8, 0), taken: true, videoUri: 'mock-video-1', timestamp: '2026-01-21T08:05:00Z' },
-      { id: '2', name: 'Study Drug B', dosage: '25mg', frequency: 'Twice daily', time: formatTime(8, 0), taken: true, videoUri: 'mock-video-2', timestamp: '2026-01-21T08:06:00Z' },
-      { id: '3', name: 'Study Drug B', dosage: '25mg', frequency: 'Twice daily', time: formatTime(20, 0), taken: false },
-      { id: '4', name: 'Supplement C', dosage: '500mg', frequency: 'Once daily', time: formatTime(12, 0), taken: false },
-    ]);
-  };
-
-  const handleRecordVideo = async (doseId: string) => {
-    if (!cameraPermission) {
-      await requestCameraPermission();
-      if (!cameraPermission) return;
+  const handleMarkTaken = async (doseId: string) => {
+    setMarkingDose(doseId);
+    try {
+      const { medication } = await apiRequest<{ medication: MedicationDose }>(
+        `/api/participant-app/medications/${doseId}/take`,
+        { method: 'POST' }
+      );
+      setDoses(prev => prev.map(dose => dose.id === doseId ? medication : dose));
+    } catch (error) {
+      Alert.alert('Could not update medication', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setMarkingDose(null);
     }
-
-    setRecording(doseId);
-    setShowCamera(true);
   };
 
-  const handleVideoRecorded = async (uri: string, doseId: string) => {
-    setRecording(null);
-    setShowCamera(false);
-    setUploading(doseId);
-
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    setDoses(prev => prev.map(d => 
-      d.id === doseId ? { ...d, taken: true, videoUri: uri, timestamp: new Date().toISOString() } : d
-    ));
-
-    setUploading(null);
-    Alert.alert(t('videoUploaded'), t('medicationTaken'));
+  const isTaken = (dose: MedicationDose) => dose.status === 'TAKEN';
+  const canMarkTaken = (dose: MedicationDose) => ['PRESCRIBED', 'DISPENSED'].includes(dose.status);
+  const formatTime = (dateString: string) => {
+    return new Date(dateString).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
   };
 
-  const handleCancelRecording = () => {
-    setRecording(null);
-    setShowCamera(false);
-  };
-
-  const formatTime = (timeStr: string) => {
-    const [hours, minutes] = timeStr.split(':');
-    const h = parseInt(hours);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const displayHour = h % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  const isPastDue = (timeStr: string) => {
-    const now = new Date();
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const doseTime = new Date();
-    doseTime.setHours(hours, minutes, 0, 0);
-    return doseTime < now;
-  };
+  const isPastDue = (dateString: string) => new Date(dateString) < new Date();
 
   const getNextDose = () => {
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    
     return doses
-      .filter(d => !d.taken)
-      .map(d => {
-        const [hours, minutes] = d.time.split(':').map(Number);
-        const doseMinutes = hours * 60 + minutes;
-        return { ...d, doseMinutes, diff: doseMinutes - currentMinutes };
-      })
-      .filter(d => d.diff > -60)
-      .sort((a, b) => a.diff - b.diff)[0];
+      .filter(dose => !isTaken(dose) && ['PRESCRIBED', 'DISPENSED'].includes(dose.status))
+      .sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime())[0];
   };
 
   const nextDose = getNextDose();
@@ -128,113 +80,90 @@ export default function MedicationVerificationScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.title}>{t('medicationVerification')}</Text>
-          <Text style={styles.subtitle}>{t('recordMedicationIntake')}</Text>
+          <Text style={styles.subtitle}>View your study medication schedule and record doses taken.</Text>
         </View>
 
         {nextDose && (
           <View style={styles.nextDoseCard}>
             <Text style={styles.nextDoseLabel}>{t('nextDose')}</Text>
-            <Text style={styles.nextDoseName}>{nextDose.name}</Text>
+            <Text style={styles.nextDoseName}>{nextDose.medicationName}</Text>
             <Text style={styles.nextDoseDetails}>
               {nextDose.dosage} • {nextDose.frequency}
             </Text>
             <Text style={styles.nextDoseTime}>
-              ⏰ {formatTime(nextDose.time)} {isPastDue(nextDose.time) ? '(Past Due)' : ''}
+              ⏰ {formatTime(nextDose.scheduledTime)} {isPastDue(nextDose.scheduledTime) ? '(Past Due)' : ''}
             </Text>
           </View>
         )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Today's Schedule</Text>
-          <View style={styles.dosesList}>
-            {doses.map(dose => (
+          {loading ? (
+            <ActivityIndicator size="large" color="#16836b" />
+          ) : doses.length === 0 ? (
+            <Text style={styles.instructionItem}>No medication doses are scheduled for today.</Text>
+          ) : (
+            <View style={styles.dosesList}>
+              {doses.map(dose => {
+                const taken = isTaken(dose);
+                const overdue = isPastDue(dose.scheduledTime) && !taken;
+                return (
               <View key={dose.id} style={styles.doseCard}>
                 <View style={styles.doseInfo}>
                   <View style={[
                     styles.doseStatusIcon,
-                    dose.taken ? styles.doseStatusTaken : isPastDue(dose.time) ? styles.doseStatusOverdue : styles.doseStatusPending,
+                    taken ? styles.doseStatusTaken : overdue ? styles.doseStatusOverdue : styles.doseStatusPending,
                   ]}>
-                    {dose.taken ? '✅' : isPastDue(dose.time) ? '⚠️' : '⏳'}
+                    {taken ? '✅' : overdue ? '⚠️' : '⏳'}
                   </View>
                   <View style={styles.doseDetails}>
-                    <Text style={styles.doseName}>{dose.name}</Text>
+                    <Text style={styles.doseName}>{dose.medicationName}</Text>
                     <Text style={styles.doseMeta}>{dose.dosage} • {dose.frequency}</Text>
                     <Text style={[
                       styles.doseTime,
-                      isPastDue(dose.time) && !dose.taken && styles.doseTimeOverdue,
+                      overdue && styles.doseTimeOverdue,
                     ]}>
-                      🕐 {formatTime(dose.time)}
+                      🕐 {formatTime(dose.scheduledTime)}
                     </Text>
+                    {taken && dose.actualTime && (
+                      <Text style={styles.doseMeta}>Recorded at {formatTime(dose.actualTime)}</Text>
+                    )}
                   </View>
                 </View>
                 <View style={styles.doseActions}>
-                  {dose.taken ? (
-                    <TouchableOpacity style={styles.viewVideoButton} onPress={() => Alert.alert('Video Recorded', 'Medication verification video available')}>
-                      <Text style={styles.viewVideoText}>📹 View Video</Text>
-                    </TouchableOpacity>
+                  {taken || !canMarkTaken(dose) ? (
+                    <Text style={styles.takenLabel}>
+                      {taken ? 'Taken' : dose.status.replaceAll('_', ' ').toLowerCase()}
+                    </Text>
                   ) : (
                     <TouchableOpacity
-                      style={[
-                        styles.recordButton,
-                        recording === dose.id && styles.recordButtonRecording,
-                        uploading === dose.id && styles.recordButtonUploading,
-                      ]}
-                      onPress={() => handleRecordVideo(dose.id)}
-                      disabled={recording !== null && recording !== dose.id || uploading !== null}
+                      style={[styles.recordButton, markingDose === dose.id && styles.recordButtonUploading]}
+                      onPress={() => handleMarkTaken(dose.id)}
+                      disabled={markingDose !== null}
                     >
-                      {uploading === dose.id ? (
+                      {markingDose === dose.id ? (
                         <ActivityIndicator size="small" color="white" />
-                      ) : recording === dose.id ? (
-                        <Text style={styles.recordButtonTextRecording}>🔴 Recording...</Text>
                       ) : (
-                        <Text style={styles.recordButtonText}>{t('takeVideo')}</Text>
+                        <Text style={styles.recordButtonText}>Mark taken</Text>
                       )}
                     </TouchableOpacity>
                   )}
                 </View>
               </View>
-            ))}
-          </View>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Instructions</Text>
           <View style={styles.instructionsList}>
-            <Text style={styles.instructionItem}>• Record a clear video showing you taking the medication</Text>
-            <Text style={styles.instructionItem}>• Ensure good lighting and the medication is visible</Text>
-            <Text style={styles.instructionItem}>• State your name, date, and medication name in the video</Text>
-            <Text style={styles.instructionItem}>• Videos are encrypted and stored securely</Text>
-            <Text style={styles.instructionItem}>• Videos are used only for adherence monitoring</Text>
+            <Text style={styles.instructionItem}>• Only mark a dose taken after you have taken it.</Text>
+            <Text style={styles.instructionItem}>• Your confirmation is saved to your study record.</Text>
           </View>
         </View>
       </ScrollView>
-
-      {showCamera && (
-        <View style={styles.cameraOverlay}>
-          <View style={styles.cameraContainer}>
-            <View style={styles.cameraPreview}>
-              <Text style={styles.cameraPlaceholder}>📷 Camera Preview</Text>
-              <Text style={styles.cameraInstruction}>
-                Position medication in frame and press record
-              </Text>
-            </View>
-            <View style={styles.cameraControls}>
-              <TouchableOpacity style={styles.cameraSwitch} onPress={() => setCameraType(c => c === 'front' ? 'back' : 'front')}>
-                <Text style={styles.cameraSwitchText}>🔄 Switch</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.cameraRecord} onPress={() => handleVideoRecorded('mock-video-uri', recording!)}>
-                <View style={[
-                  styles.recordCircle,
-                  recording && styles.recordCircleRecording,
-                ]} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.cameraCancel} onPress={handleCancelRecording}>
-                <Text style={styles.cameraCancelText}>✕ Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -477,7 +406,12 @@ const styles = StyleSheet.create({
   },
   recordCircleRecording: {
     backgroundColor: '#dc2626',
-    animation: 'pulse 1s infinite',
+    opacity: 0.85,
+  },
+  takenLabel: {
+    color: '#15803d',
+    fontSize: 13,
+    fontWeight: '700',
   },
   cameraCancel: {
     paddingHorizontal: 16,

@@ -12,7 +12,13 @@ import {
   Image,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { useNavigation } from '@react-navigation/native';
+import { apiRequest } from '../services/api';
+
+interface DashboardScreenProps {
+  navigation: {
+    navigate: (route: string, params?: unknown) => void;
+  };
+}
 
 interface Visit {
   id: string;
@@ -37,79 +43,141 @@ interface Notification {
 interface Survey {
   id: string;
   title: string;
-  type: 'daily' | 'weekly' | 'side-effect' | 'energy';
-  status: 'pending' | 'completed';
+  type: 'daily' | 'weekly' | 'side-effect' | 'energy' | 'other';
+  status: 'pending' | 'completed' | 'missed';
   dueDate: string;
 }
 
-export default function DashboardScreen() {
+interface ParticipantDashboardResponse {
+  visits: Array<{
+    id: string;
+    visitNumber: number;
+    visitType: string;
+    scheduledDate: string;
+    status: string;
+    notes: string | null;
+    Site?: { name: string; address: string } | null;
+  }>;
+  surveys: Array<{
+    id: string;
+    surveyType: string;
+    status: string;
+    scheduledDate: string;
+  }>;
+  notifications: Array<{
+    id: string;
+    title: string;
+    message: string;
+    type: string;
+    priority: string;
+    sentAt: string;
+    read: boolean;
+  }>;
+}
+
+export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const { user, t } = useAuth();
-  const navigation = useNavigation();
   const [visits, setVisits] = useState<Visit[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    loadMockData();
+    void loadDashboard();
   }, []);
 
   useEffect(() => {
     setUnreadCount(notifications.filter(n => !n.read).length);
   }, [notifications]);
 
-  const loadMockData = () => {
-    setVisits([
-      { id: '1', title: 'Visit 1 - Screening', type: 'Screening', date: '2026-01-22', time: '09:00 AM', location: 'AIIA, New Delhi', status: 'scheduled', instructions: 'Fasting required for 8 hours. Bring all previous medical records.' },
-      { id: '2', title: 'Visit 2 - Baseline', type: 'Baseline', date: '2026-01-25', time: '10:30 AM', location: 'AIIA, New Delhi', status: 'scheduled', instructions: 'Take morning medication as usual.' },
-      { id: '3', title: 'Visit 3 - Week 2', type: 'Follow-up', date: '2026-02-01', time: '11:00 AM', location: 'AIIA, New Delhi', status: 'scheduled', instructions: 'Bring medication diary.' },
-    ]);
+  const loadDashboard = async () => {
+    try {
+      const data = await apiRequest<ParticipantDashboardResponse>('/api/participant-app/dashboard');
 
-    setNotifications([
-      { id: '1', title: 'Daily Survey Due', message: 'Your daily symptom survey is due today', type: 'pending', timestamp: '2026-01-21T08:00:00Z', read: false },
-      { id: '2', title: 'Visit Reminder', message: 'Screening visit tomorrow at 9:00 AM', type: 'info', timestamp: '2026-01-21T10:00:00Z', read: false },
-      { id: '3', title: 'Medication Verification', message: 'Please upload your morning medication video', type: 'pending', timestamp: '2026-01-21T07:30:00Z', read: true },
-      { id: '4', title: 'Weekly Survey Available', message: 'Week 1 survey is now available', type: 'info', timestamp: '2026-01-20T18:00:00Z', read: true },
-    ]);
-
-    setSurveys([
-      { id: '1', title: 'Daily Symptom Survey', type: 'daily', status: 'pending', dueDate: '2026-01-21' },
-      { id: '2', title: 'Weekly Energy Level', type: 'weekly', status: 'pending', dueDate: '2026-01-21' },
-      { id: '3', title: 'Side Effect Check', type: 'side-effect', status: 'completed', dueDate: '2026-01-20' },
-    ]);
+      setVisits(data.visits.map<Visit>(visit => ({
+        id: visit.id,
+        title: `${visit.visitNumber ? `Visit ${visit.visitNumber} - ` : ''}${String(visit.visitType).replaceAll('_', ' ')}`,
+        type: String(visit.visitType).replaceAll('_', ' '),
+        date: dateKey(visit.scheduledDate),
+        time: new Date(visit.scheduledDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        location: visit.Site?.name || visit.Site?.address || 'Study site',
+        status: visit.status === 'COMPLETED' ? 'completed' : visit.status === 'MISSED' || visit.status === 'CANCELLED' ? 'missed' : visit.status === 'IN_PROGRESS' || visit.status === 'CHECKED_IN' ? 'in-progress' : 'scheduled',
+        instructions: visit.notes || undefined,
+      })));
+      setSurveys(data.surveys.map<Survey>(survey => ({
+        id: survey.id,
+        title: survey.surveyType === 'DAILY' ? t('dailySurvey')
+          : survey.surveyType === 'WEEKLY' ? t('weeklySurvey')
+            : survey.surveyType === 'SIDE_EFFECT' ? t('sideEffectSurvey')
+              : survey.surveyType === 'ENERGY_LEVEL' ? t('energyLevelSurvey')
+                : String(survey.surveyType).replaceAll('_', ' '),
+        type: survey.surveyType === 'DAILY' ? 'daily'
+          : survey.surveyType === 'WEEKLY' ? 'weekly'
+            : survey.surveyType === 'SIDE_EFFECT' ? 'side-effect'
+              : survey.surveyType === 'ENERGY_LEVEL' ? 'energy' : 'other',
+        status: survey.status === 'COMPLETED' ? 'completed'
+          : survey.status === 'MISSED' || survey.status === 'EXEMPT' ? 'missed' : 'pending',
+        dueDate: dateKey(survey.scheduledDate),
+      })));
+      setNotifications(data.notifications.map<Notification>(notification => ({
+        id: notification.id,
+        title: notification.title,
+        message: notification.message,
+        type: notification.priority === 'URGENT' || notification.type === 'SAFETY_ALERT' ? 'urgent' : notification.type === 'SURVEY_DUE' || notification.type === 'MEDICATION_DUE' ? 'pending' : 'info',
+        timestamp: notification.sentAt,
+        read: notification.read,
+      })));
+    } catch (error) {
+      console.error('Failed to load participant dashboard:', error);
+      Alert.alert('Could not load your dashboard', error instanceof Error ? error.message : 'Please try again.');
+    }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    loadMockData();
-    setRefreshing(false);
+    try {
+      await loadDashboard();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleVisitPress = (visit: Visit) => {
-    navigation.navigate('VisitDetails', { visit });
+    Alert.alert(
+      visit.title,
+      `${formatDate(visit.date)} at ${visit.time}\n${visit.location}${visit.instructions ? `\n\n${visit.instructions}` : ''}`
+    );
   };
 
   const handleSurveyPress = (survey: Survey) => {
     navigation.navigate('SurveyScreen', { survey });
   };
 
-  const handleNotificationPress = (notification: Notification) => {
-    const updated = notifications.map(n => n.id === notification.id ? { ...n, read: true } : n);
-    setNotifications(updated);
-    
+  const handleNotificationPress = async (notification: Notification) => {
+    if (!notification.read) {
+      try {
+        await apiRequest(`/api/participant-app/notifications/${notification.id}/read`, { method: 'POST' });
+        setNotifications(prev => prev.map(item => item.id === notification.id ? { ...item, read: true } : item));
+      } catch (error) {
+        Alert.alert('Could not update notification', error instanceof Error ? error.message : 'Please try again.');
+        return;
+      }
+    }
+
     if (notification.type === 'pending') {
-      if (notification.message.includes('survey')) {
+      const content = `${notification.title} ${notification.message}`.toLowerCase();
+      if (content.includes('survey')) {
         navigation.navigate('Surveys');
-      } else if (notification.message.includes('medication')) {
+      } else if (content.includes('medication')) {
         navigation.navigate('MedicationVerification');
       }
     }
   };
 
   const handleViewAllNotifications = () => {
-    navigation.navigate('Notifications');
+    setShowAllNotifications(prev => !prev);
   };
 
   const getStatusColor = (status: Visit['status']) => {
@@ -144,10 +212,16 @@ export default function DashboardScreen() {
     return date.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
   };
 
-  const todayVisits = visits.filter(v => v.date === '2026-01-22');
-  const upcomingVisits = visits.filter(v => v.date !== '2026-01-22');
+  const dateKey = (value: string) => {
+    const date = new Date(value);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+  const today = dateKey(new Date().toISOString());
+  const todayVisits = visits.filter(v => v.date === today);
+  const upcomingVisits = visits.filter(v => v.date !== today);
   const pendingSurveys = surveys.filter(s => s.status === 'pending');
   const pendingNotifications = notifications.filter(n => !n.read);
+  const displayedNotifications = showAllNotifications ? notifications : pendingNotifications.slice(0, 3);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -188,27 +262,36 @@ export default function DashboardScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {pendingNotifications.length > 0 && (
+        {(pendingNotifications.length > 0 || showAllNotifications) && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>🔔 {t('pendingTasks')}</Text>
-            </View>
-            <FlatList
-              data={pendingNotifications.slice(0, 3)}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.notificationCard} onPress={() => handleNotificationPress(item)}>
-                  <View style={styles.notificationCardLeft}>
-                    <Text style={styles.notificationIconLarge}>{getNotificationIcon(item.type)}</Text>
-                  </View>
-                  <View style={styles.notificationCardContent}>
-                    <Text style={styles.notificationCardTitle}>{item.title}</Text>
-                    <Text style={styles.notificationCardMessage}>{item.message}</Text>
-                    <Text style={styles.notificationCardTime}>{formatDate(item.timestamp)}</Text>
-                  </View>
+              <Text style={styles.sectionTitle}>🔔 {showAllNotifications ? t('notificationsTitle') : t('pendingTasks')}</Text>
+              {notifications.length > 3 && (
+                <TouchableOpacity onPress={handleViewAllNotifications}>
+                  <Text style={styles.notificationBarAction}>{showAllNotifications ? 'Show pending' : t('notificationsTitle')}</Text>
                 </TouchableOpacity>
               )}
-            />
+            </View>
+            {displayedNotifications.length > 0 ? (
+              <FlatList
+                data={displayedNotifications}
+                keyExtractor={item => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.notificationCard} onPress={() => handleNotificationPress(item)}>
+                    <View style={styles.notificationCardLeft}>
+                      <Text style={styles.notificationIconLarge}>{getNotificationIcon(item.type)}</Text>
+                    </View>
+                    <View style={styles.notificationCardContent}>
+                      <Text style={styles.notificationCardTitle}>{item.title}</Text>
+                      <Text style={styles.notificationCardMessage}>{item.message}</Text>
+                      <Text style={styles.notificationCardTime}>{formatDate(item.timestamp)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            ) : (
+              <Text style={styles.emptyStateMessage}>No notifications yet.</Text>
+            )}
           </View>
         )}
 
@@ -297,7 +380,7 @@ export default function DashboardScreen() {
                       styles.surveyTypeText,
                       { color: item.type === 'daily' ? '#3b82f6' : item.type === 'weekly' ? '#f59e0b' : item.type === 'side-effect' ? '#ef4444' : '#10b981' }
                     ]}>
-                      {item.type === 'daily' ? 'D' : item.type === 'weekly' ? 'W' : item.type === 'side-effect' ? 'SE' : 'E'}
+                      {item.type === 'daily' ? 'D' : item.type === 'weekly' ? 'W' : item.type === 'side-effect' ? 'SE' : item.type === 'energy' ? 'E' : 'A'}
                     </Text>
                   </View>
                 </View>
@@ -314,9 +397,10 @@ export default function DashboardScreen() {
                       styles.surveyStatusText,
                       { color: item.status === 'completed' ? '#10b981' : '#f59e0b' }
                     ]}>
-                      {item.status === 'completed' ? '✅ Done' : '⏳ Pending'}
+                      {item.status === 'completed' ? '✅ Done' : item.status === 'missed' ? 'Missed' : '⏳ Pending'}
                     </Text>
-                  </View>
+                  </Text>
+                </View>
                 </TouchableOpacity>
               )}
           />
@@ -337,11 +421,6 @@ export default function DashboardScreen() {
             <Text style={styles.quickActionIcon}>📝</Text>
             <Text style={styles.quickActionTitle}>{t('surveys')}</Text>
             <Text style={styles.quickActionSubtitle}>{t('dailySurvey')} & {t('weeklySurvey')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionCard} onPress={() => navigation.navigate('Consent')}>
-            <Text style={styles.quickActionIcon}>📄</Text>
-            <Text style={styles.quickActionTitle}>{t('informedConsent')}</Text>
-            <Text style={styles.quickActionSubtitle}>{t('audioVideoConsent')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

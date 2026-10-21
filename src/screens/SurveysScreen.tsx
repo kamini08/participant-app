@@ -6,11 +6,15 @@ import {
   SafeAreaView,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Alert,
   ActivityIndicator,
   Platform,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { apiRequest } from '../services/api';
+
+type SurveyAnswer = string | number | boolean | null;
 
 interface SurveyQuestion {
   id: string;
@@ -23,13 +27,22 @@ interface SurveyQuestion {
 interface Survey {
   id: string;
   title: string;
-  type: 'daily' | 'weekly' | 'side-effect' | 'energy';
+  type: 'daily' | 'weekly' | 'side-effect' | 'energy' | 'other';
   description: string;
   questions: SurveyQuestion[];
-  status: 'pending' | 'completed' | 'in-progress';
+  status: 'pending' | 'completed' | 'in-progress' | 'missed';
   dueDate: string;
   completedDate?: string;
-  responses?: Record<string, any>;
+  responses?: Record<string, SurveyAnswer>;
+}
+
+interface ApiSurvey {
+  id: string;
+  surveyType: string;
+  status: string;
+  scheduledDate: string;
+  completedAt: string | null;
+  responses: Record<string, unknown>;
 }
 
 export default function SurveysScreen() {
@@ -37,18 +50,17 @@ export default function SurveysScreen() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [activeSurvey, setActiveSurvey] = useState<Survey | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [responses, setResponses] = useState<Record<string, any>>({});
+  const [responses, setResponses] = useState<Record<string, SurveyAnswer>>({});
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    loadMockSurveys();
+    void loadSurveys();
   }, []);
 
-  const loadMockSurveys = () => {
+  const loadSurveys = async () => {
     const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-    setSurveys([
+    const templates: Survey[] = [
       {
         id: 'daily-1',
         title: t('dailySurvey'),
@@ -99,10 +111,8 @@ export default function SurveysScreen() {
         title: t('sideEffectSurvey'),
         type: 'side-effect',
         description: 'Weekly side effect assessment',
-        status: 'completed',
-        dueDate: yesterday,
-        completedDate: yesterday,
-        responses: { q1: 2, q2: 1, q3: 1, q4: 3 },
+        status: 'pending',
+        dueDate: today,
         questions: [
           { id: 'q1', text: 'Nausea severity', type: 'scale', required: true, scaleLabels: { min: 'None', max: 'Severe' } },
           { id: 'q2', text: 'Fatigue severity', type: 'scale', required: true, scaleLabels: { min: 'None', max: 'Severe' } },
@@ -110,20 +120,65 @@ export default function SurveysScreen() {
           { id: 'q4', text: 'Overall discomfort', type: 'scale', required: true, scaleLabels: { min: 'None', max: 'Severe' } },
         ],
       },
-    ]);
+    ];
+
+    try {
+      const { surveys: records } = await apiRequest<{ surveys: ApiSurvey[] }>('/api/participant-app/surveys');
+      setSurveys(records.map(record => {
+        const type = record.surveyType === 'WEEKLY' ? 'weekly'
+          : record.surveyType === 'SIDE_EFFECT' ? 'side-effect'
+            : record.surveyType === 'ENERGY_LEVEL' ? 'energy'
+              : record.surveyType === 'DAILY' ? 'daily' : 'other';
+        const template = templates.find(item => item.type === type);
+        const storedResponses = Object.fromEntries(
+          Object.entries(record.responses || {}).filter((entry): entry is [string, SurveyAnswer] =>
+            entry[1] === null || ['string', 'number', 'boolean'].includes(typeof entry[1])
+          )
+        );
+        return {
+          ...(template || {
+            title: record.surveyType.replaceAll('_', ' '),
+            type,
+            description: 'Study assessment',
+            questions: [],
+          }),
+          id: record.id,
+          dueDate: record.scheduledDate,
+          status: record.status === 'COMPLETED' ? 'completed'
+            : record.status === 'IN_PROGRESS' ? 'in-progress'
+              : record.status === 'MISSED' || record.status === 'EXEMPT' ? 'missed' : 'pending',
+          completedDate: record.completedAt || undefined,
+          responses: storedResponses,
+        };
+      }));
+    } catch (error) {
+      console.error('Failed to load participant surveys:', error);
+      Alert.alert('Could not load surveys', error instanceof Error ? error.message : 'Please try again.');
+    }
   };
 
-  const startSurvey = (survey: Survey) => {
-    if (survey.status === 'completed') {
-      Alert.alert('Already Completed', 'This survey has already been completed');
+  const startSurvey = async (survey: Survey) => {
+    if (survey.status === 'completed' || survey.status === 'missed') {
+      Alert.alert(survey.status === 'completed' ? 'Already Completed' : 'Survey unavailable', survey.status === 'completed'
+        ? 'This survey has already been completed'
+        : 'This survey is no longer available. Please contact your study team if you need help.');
       return;
     }
-    setActiveSurvey({ ...survey, status: 'in-progress' });
-    setCurrentQuestionIndex(0);
-    setResponses({});
+    if (survey.questions.length === 0) {
+      Alert.alert('Survey unavailable', 'This survey type has no questionnaire configured in the app. Please contact your study team.');
+      return;
+    }
+    try {
+      await apiRequest(`/api/participant-app/surveys/${survey.id}/start`, { method: 'POST' });
+      setActiveSurvey({ ...survey, status: 'in-progress' });
+      setCurrentQuestionIndex(0);
+      setResponses(survey.responses || {});
+    } catch (error) {
+      Alert.alert('Could not start survey', error instanceof Error ? error.message : 'Please try again.');
+    }
   };
 
-  const handleResponse = (questionId: string, value: any) => {
+  const handleResponse = (questionId: string, value: SurveyAnswer) => {
     setResponses(prev => ({ ...prev, [questionId]: value }));
   };
 
@@ -150,17 +205,23 @@ export default function SurveysScreen() {
 
     if (currentQuestionIndex === activeSurvey.questions.length - 1) {
       setSubmitting(true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setSurveys(prev => prev.map(s => 
-        s.id === activeSurvey.id 
-          ? { ...s, status: 'completed', completedDate: new Date().toISOString().split('T')[0], responses }
-          : s
-      ));
-      
-      setActiveSurvey(null);
-      setSubmitting(false);
-      Alert.alert('Success', 'Survey submitted successfully');
+      try {
+        await apiRequest(`/api/participant-app/surveys/${activeSurvey.id}/submit`, {
+          method: 'POST',
+          body: { responses },
+        });
+        setSurveys(prev => prev.map(s =>
+          s.id === activeSurvey.id
+            ? { ...s, status: 'completed', completedDate: new Date().toISOString(), responses }
+            : s
+        ));
+        setActiveSurvey(null);
+        Alert.alert('Success', 'Your survey response has been saved.');
+      } catch (error) {
+        Alert.alert('Could not submit survey', error instanceof Error ? error.message : 'Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
     } else {
       nextQuestion();
     }
@@ -179,6 +240,7 @@ export default function SurveysScreen() {
       case 'pending': return '#f59e0b';
       case 'completed': return '#10b981';
       case 'in-progress': return '#3b82f6';
+      case 'missed': return '#ef4444';
     }
   };
 
@@ -280,7 +342,7 @@ export default function SurveysScreen() {
               <TextInput
                 style={styles.textInput}
                 placeholder="Your response..."
-                value={responses[question.id] || ''}
+                value={typeof responses[question.id] === 'string' ? String(responses[question.id]) : ''}
                 onChangeText={text => handleResponse(question.id, text)}
                 multiline
                 numberOfLines={4}
@@ -316,8 +378,9 @@ export default function SurveysScreen() {
     );
   }
 
-  const pendingSurveys = surveys.filter(s => s.status === 'pending');
+  const pendingSurveys = surveys.filter(s => s.status === 'pending' || s.status === 'in-progress');
   const completedSurveys = surveys.filter(s => s.status === 'completed');
+  const unavailableSurveys = surveys.filter(s => s.status === 'missed');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -342,7 +405,7 @@ export default function SurveysScreen() {
                         styles.surveyTypeText,
                         { color: survey.type === 'daily' ? '#3b82f6' : survey.type === 'weekly' ? '#f59e0b' : survey.type === 'energy' ? '#10b981' : '#ef4444' }
                       ]}>
-                        {survey.type === 'daily' ? 'D' : survey.type === 'weekly' ? 'W' : survey.type === 'energy' ? 'E' : 'SE'}
+                        {survey.type === 'daily' ? 'D' : survey.type === 'weekly' ? 'W' : survey.type === 'energy' ? 'E' : survey.type === 'side-effect' ? 'SE' : 'A'}
                       </Text>
                     </View>
                   </View>
@@ -356,7 +419,7 @@ export default function SurveysScreen() {
                       styles.surveyStatusBadge,
                       { backgroundColor: '#fef3c7' }
                     ]}>
-                      <Text style={styles.surveyStatusTextPending}>⏳ Pending</Text>
+                      <Text style={styles.surveyStatusTextPending}>{survey.status === 'in-progress' ? '▶ In progress' : '⏳ Pending'}</Text>
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -402,7 +465,24 @@ export default function SurveysScreen() {
           </View>
         )}
 
-        {pendingSurveys.length === 0 && completedSurveys.length === 0 && (
+        {unavailableSurveys.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Unavailable Surveys</Text>
+            <View style={styles.surveysList}>
+              {unavailableSurveys.map(survey => (
+                <View key={survey.id} style={styles.surveyCardCompleted}>
+                  <View style={styles.surveyCardContent}>
+                    <Text style={styles.surveyCardTitle}>{survey.title}</Text>
+                    <Text style={styles.surveyCardDescription}>{survey.description}</Text>
+                  </View>
+                  <Text style={[styles.surveyStatusBadge, { color: '#b91c1c' }]}>Missed</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {pendingSurveys.length === 0 && completedSurveys.length === 0 && unavailableSurveys.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateIcon}>📋</Text>
             <Text style={styles.emptyStateTitle}>No Surveys Available</Text>

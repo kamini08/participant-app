@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Alert, Platform, Linking } from 'react-native';
-import * as LocalAuthentication from 'expo-local-authentication';
+import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { SupportedLanguage, DEFAULT_LANGUAGE, TRANSLATIONS } from '../constants/languages';
+import { apiRequest, clearAuthTokens, hasAuthTokens, storeAuthTokens } from '../services/api';
 
 export interface User {
   id: string;
@@ -18,7 +18,6 @@ export interface User {
   biometricEnabled: boolean;
   faceIdEnabled: boolean;
   touchIdEnabled: boolean;
-  pin?: string;
 }
 
 export interface AuthState {
@@ -30,17 +29,13 @@ export interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  login: (pin: string) => Promise<boolean>;
-  loginWithOtp: (phone: string) => Promise<boolean>;
-  verifyOtp: (otp: string) => Promise<boolean>;
-  authenticateWithBiometric: () => Promise<boolean>;
+  login: (participantId: string, pin: string) => Promise<boolean>;
   logout: () => Promise<void>;
   setLanguage: (lang: SupportedLanguage) => void;
   setFontSize: (size: 'small' | 'medium' | 'large' | 'extraLarge') => void;
   toggleBiometric: (enabled: boolean) => Promise<void>;
   toggleFaceId: (enabled: boolean) => Promise<void>;
   toggleTouchId: (enabled: boolean) => Promise<void>;
-  changePin: (oldPin: string, newPin: string) => Promise<boolean>;
   t: (key: string) => string;
 }
 
@@ -48,7 +43,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
   USER: 'user_data',
-  PIN: 'user_pin',
+  LEGACY_PIN: 'user_pin',
   BIOMETRIC_ENABLED: 'biometric_enabled',
   FACE_ID_ENABLED: 'face_id_enabled',
   TOUCH_ID_ENABLED: 'touch_id_enabled',
@@ -56,21 +51,41 @@ const STORAGE_KEYS = {
   FONT_SIZE: 'font_size',
 };
 
-const MOCK_USER: User = {
-  id: '1',
-  participantId: 'PT-2026-001',
-  name: 'Priya Sharma',
-  email: 'priya.sharma@example.com',
-  phone: '+91 98765 43210',
-  trialId: 'TR-AYUR-001',
-  siteId: 'SITE-DEL-001',
-  role: 'participant',
-  language: 'en',
-  fontSize: 'medium',
-  biometricEnabled: false,
-  faceIdEnabled: false,
-  touchIdEnabled: false,
-};
+interface ParticipantProfile {
+  id: string;
+  participantId: string;
+  trialId: string;
+  siteId: string;
+  user: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone?: string | null;
+    language: string;
+    fontSize: string;
+  };
+}
+
+function mapParticipant(profile: ParticipantProfile, preferences: {
+  language: SupportedLanguage;
+  fontSize: User['fontSize'];
+  biometricEnabled: boolean;
+  faceIdEnabled: boolean;
+  touchIdEnabled: boolean;
+}): User {
+  return {
+    id: profile.user.id,
+    participantId: profile.participantId,
+    name: `${profile.user.firstName} ${profile.user.lastName}`.trim(),
+    email: profile.user.email,
+    phone: profile.user.phone || '',
+    trialId: profile.trialId,
+    siteId: profile.siteId,
+    role: 'participant',
+    ...preferences,
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -89,9 +104,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadStoredAuth = async () => {
     try {
-      const [userData, pin, biometricEnabled, faceIdEnabled, touchIdEnabled, language, fontSize] = await Promise.all([
-        SecureStore.getItemAsync(STORAGE_KEYS.USER),
-        SecureStore.getItemAsync(STORAGE_KEYS.PIN),
+      await SecureStore.deleteItemAsync(STORAGE_KEYS.LEGACY_PIN);
+      const [hasToken, biometricEnabled, faceIdEnabled, touchIdEnabled, language, fontSize] = await Promise.all([
+        hasAuthTokens(),
         SecureStore.getItemAsync(STORAGE_KEYS.BIOMETRIC_ENABLED),
         SecureStore.getItemAsync(STORAGE_KEYS.FACE_ID_ENABLED),
         SecureStore.getItemAsync(STORAGE_KEYS.TOUCH_ID_ENABLED),
@@ -99,115 +114,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         SecureStore.getItemAsync(STORAGE_KEYS.FONT_SIZE),
       ]);
 
-      if (userData) {
-        const user = JSON.parse(userData) as User;
-        if (pin) user.pin = pin;
-        user.biometricEnabled = biometricEnabled === 'true';
-        user.faceIdEnabled = faceIdEnabled === 'true';
-        user.touchIdEnabled = touchIdEnabled === 'true';
-        
+      const selectedLanguage = (language as SupportedLanguage) || DEFAULT_LANGUAGE;
+      const selectedFontSize = (fontSize as User['fontSize']) || 'medium';
+      const preferences = {
+        language: selectedLanguage,
+        fontSize: selectedFontSize,
+        biometricEnabled: biometricEnabled === 'true',
+        faceIdEnabled: faceIdEnabled === 'true',
+        touchIdEnabled: touchIdEnabled === 'true',
+      };
+
+      if (hasToken) {
+        const { participant } = await apiRequest<{ participant: ParticipantProfile }>('/api/participant-app/me');
+        const user = mapParticipant(participant, preferences);
+        await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user));
         setState({
           user,
           isAuthenticated: true,
           isLoading: false,
-          language: (language as SupportedLanguage) || DEFAULT_LANGUAGE,
-          fontSize: (fontSize as 'small' | 'medium' | 'large' | 'extraLarge') || 'medium',
+          language: selectedLanguage,
+          fontSize: selectedFontSize,
         });
       } else {
-        setState(prev => ({ ...prev, isLoading: false }));
+        await SecureStore.deleteItemAsync(STORAGE_KEYS.USER);
+        setState({ user: null, isAuthenticated: false, isLoading: false, language: selectedLanguage, fontSize: selectedFontSize });
       }
     } catch (error) {
       console.error('Failed to load auth:', error);
+      Alert.alert('Unable to connect', error instanceof Error ? error.message : 'Please check the API connection and try again.');
       setState(prev => ({ ...prev, isLoading: false }));
     }
   };
 
-  const login = async (pin: string): Promise<boolean> => {
+  const login = async (participantId: string, pin: string): Promise<boolean> => {
     try {
-      if (pin === '1234' || pin === MOCK_USER.pin) {
-        const user = { ...MOCK_USER, pin };
-        await Promise.all([
-          SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user)),
-          SecureStore.setItemAsync(STORAGE_KEYS.PIN, pin),
-        ]);
-        setState(prev => ({ ...prev, user, isAuthenticated: true }));
-        return true;
-      }
-      Alert.alert(t('invalidPin'), t('tryAgain'));
-      return false;
-    } catch (error) {
-      console.error('Login error:', error);
-      Alert.alert(t('somethingWentWrong'), t('tryAgain'));
-      return false;
-    }
-  };
-
-  const loginWithOtp = async (phone: string): Promise<boolean> => {
-    try {
-      console.log(`Sending OTP to ${phone}`);
-      Alert.alert(t('otpSent'), t('enterOtp'));
-      return true;
-    } catch (error) {
-      console.error('OTP send error:', error);
-      Alert.alert(t('somethingWentWrong'), t('tryAgain'));
-      return false;
-    }
-  };
-
-  const verifyOtp = async (otp: string): Promise<boolean> => {
-    try {
-      if (otp === '123456' || otp.length === 6) {
-        const user = { ...MOCK_USER };
-        await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user));
-        setState(prev => ({ ...prev, user, isAuthenticated: true }));
-        return true;
-      }
-      Alert.alert(t('invalidOtp'), t('tryAgain'));
-      return false;
-    } catch (error) {
-      console.error('OTP verify error:', error);
-      Alert.alert(t('somethingWentWrong'), t('tryAgain'));
-      return false;
-    }
-  };
-
-  const authenticateWithBiometric = async (): Promise<boolean> => {
-    try {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      
-      if (!hasHardware || !isEnrolled) {
-        Alert.alert(t('faceIdNotAvailable'));
-        return false;
-      }
-
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: t('faceIdPopupMessage'),
-        cancelLabel: 'Cancel',
-        fallbackLabel: t('enterPin'),
-        disableDeviceFallback: false,
+      const session = await apiRequest<{
+        user: { role: string };
+        accessToken: string;
+        refreshToken: string;
+      }>('/api/auth/pin-login', {
+        method: 'POST',
+        auth: false,
+        body: { participantId: participantId.trim(), pin },
       });
 
-      if (result.success) {
-        const user = { ...MOCK_USER };
-        await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user));
-        setState(prev => ({ ...prev, user, isAuthenticated: true }));
-        return true;
-      } else {
-        Alert.alert(t('faceIdFailed'));
-        return false;
+      if (session.user.role !== 'PARTICIPANT') {
+        throw new Error('This account is not registered as a participant.');
       }
+
+      await storeAuthTokens(session);
+      const { participant } = await apiRequest<{ participant: ParticipantProfile }>('/api/participant-app/me');
+      const user = mapParticipant(participant, {
+        language: state.language,
+        fontSize: state.fontSize,
+        biometricEnabled: false,
+        faceIdEnabled: false,
+        touchIdEnabled: false,
+      });
+      await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user));
+      setState(prev => ({ ...prev, user, isAuthenticated: true }));
+      return true;
     } catch (error) {
-      console.error('Biometric auth error:', error);
-      Alert.alert(t('faceIdFailed'));
+      console.error('Login error:', error);
+      await clearAuthTokens();
+      Alert.alert('Unable to sign in', error instanceof Error ? error.message : t('tryAgain'));
       return false;
     }
   };
 
   const logout = async () => {
     try {
+      await clearAuthTokens();
       await SecureStore.deleteItemAsync(STORAGE_KEYS.USER);
-      await SecureStore.deleteItemAsync(STORAGE_KEYS.PIN);
       setState(prev => ({ ...prev, user: null, isAuthenticated: false }));
     } catch (error) {
       console.error('Logout error:', error);
@@ -281,46 +259,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const changePin = async (oldPin: string, newPin: string): Promise<boolean> => {
-    try {
-      if (state.user?.pin !== oldPin && oldPin !== '1234') {
-        Alert.alert(t('invalidPin'));
-        return false;
-      }
-      if (newPin.length < 4) {
-        Alert.alert('PIN must be at least 4 digits');
-        return false;
-      }
-      await SecureStore.setItemAsync(STORAGE_KEYS.PIN, newPin);
-      if (state.user) {
-        const updatedUser = { ...state.user, pin: newPin };
-        await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-        setState(prev => ({ ...prev, user: updatedUser }));
-      }
-      return true;
-    } catch (error) {
-      console.error('Change PIN error:', error);
-      Alert.alert(t('somethingWentWrong'));
-      return false;
-    }
-  };
-
   return (
     <AuthContext.Provider
       value={{
         ...state,
         t,
         login,
-        loginWithOtp,
-        verifyOtp,
-        authenticateWithBiometric,
         logout,
         setLanguage,
         setFontSize,
         toggleBiometric,
         toggleFaceId,
         toggleTouchId,
-        changePin,
       }}
     >
       {children}
