@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Alert, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import DashboardScreen from './src/screens/DashboardScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -100,9 +101,11 @@ function ParticipantApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ParticipantApp />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <ParticipantApp />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 

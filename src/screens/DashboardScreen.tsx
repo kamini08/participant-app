@@ -3,14 +3,13 @@ import {
   View,
   Text,
   ScrollView,
-  SafeAreaView,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   RefreshControl,
   Alert,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../services/api';
 
@@ -273,11 +272,9 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
               )}
             </View>
             {displayedNotifications.length > 0 ? (
-              <FlatList
-                data={displayedNotifications}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.notificationCard} onPress={() => handleNotificationPress(item)}>
+              <View style={styles.listContent}>
+                {displayedNotifications.map(item => (
+                  <TouchableOpacity key={item.id} style={styles.notificationCard} onPress={() => handleNotificationPress(item)}>
                     <View style={styles.notificationCardLeft}>
                       <Text style={styles.notificationIconLarge}>{getNotificationIcon(item.type)}</Text>
                     </View>
@@ -287,8 +284,8 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                       <Text style={styles.notificationCardTime}>{formatDate(item.timestamp)}</Text>
                     </View>
                   </TouchableOpacity>
-                )}
-              />
+                ))}
+              </View>
             ) : (
               <Text style={styles.emptyStateMessage}>No notifications yet.</Text>
             )}
@@ -300,11 +297,9 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
             <Text style={styles.sectionTitle}>📅 {t('todayVisits')}</Text>
           </View>
           {todayVisits.length > 0 ? (
-            <FlatList
-              data={todayVisits}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.visitCard} onPress={() => handleVisitPress(item)}>
+            <View style={styles.listContent}>
+              {todayVisits.map(item => (
+                <TouchableOpacity key={item.id} style={styles.visitCard} onPress={() => handleVisitPress(item)}>
                   <View style={styles.visitCardLeft}>
                     <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
                   </View>
@@ -321,8 +316,8 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                     <Text style={styles.chevron}>›</Text>
                   </View>
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </View>
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>📅</Text>
@@ -336,11 +331,9 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>📆 {t('upcomingVisits')}</Text>
             </View>
-            <FlatList
-              data={upcomingVisits}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity style={styles.visitCard} onPress={() => handleVisitPress(item)}>
+            <View style={styles.listContent}>
+              {upcomingVisits.map(item => (
+                <TouchableOpacity key={item.id} style={styles.visitCard} onPress={() => handleVisitPress(item)}>
                   <View style={styles.visitCardLeft}>
                     <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
                   </View>
@@ -357,8 +350,8 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                     <Text style={styles.chevron}>›</Text>
                   </View>
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </View>
           </View>
         )}
 
@@ -366,11 +359,9 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>📋 {t('surveys')}</Text>
           </View>
-          <FlatList
-            data={surveys}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.surveyCard} onPress={() => handleSurveyPress(item)}>
+          <View style={styles.listContent}>
+            {surveys.map(item => (
+              <TouchableOpacity key={item.id} style={styles.surveyCard} onPress={() => handleSurveyPress(item)}>
                 <View style={styles.surveyCardLeft}>
                   <View style={[
                     styles.surveyTypeBadge,
@@ -402,8 +393,8 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
                   </Text>
                 </View>
                 </TouchableOpacity>
-              )}
-          />
+            ))}
+          </View>
         </View>
 
         <View style={styles.quickActions}>
@@ -530,6 +521,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1e293b',
+  },
+  listContent: {
+    flexDirection: 'column',
   },
   notificationCard: {
     flexDirection: 'row',

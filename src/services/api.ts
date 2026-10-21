@@ -27,7 +27,9 @@ export class ApiError extends Error {
 
 function getApiUrl(path: string) {
   if (!API_BASE_URL) {
-    throw new Error('Set EXPO_PUBLIC_API_URL in participants-app/.env to your computer’s network address and port 3001.');
+    throw new Error(
+      'API address is not configured. Copy participants-app/.env.example to participants-app/.env, set EXPO_PUBLIC_API_URL to http://<computer-LAN-IP>:3001, then restart Expo with npx expo start --clear.'
+    );
   }
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 }
@@ -63,7 +65,22 @@ async function sendRequest<T>(path: string, options: ApiOptions, token?: string)
 
   if (response.status === 204) return undefined as T;
 
-  const payload = await response.json() as { error?: string; message?: string } & T;
+  const responseText = await response.text();
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    const message = contentType.toLowerCase().includes('text/html')
+      ? `The API returned an HTML page for ${path} (HTTP ${response.status}). Check EXPO_PUBLIC_API_URL and make sure it points to the Prisma API started with "cd backend && npm run dev", not the legacy "node index.js" server.`
+      : `The API returned an unexpected response for ${path} (HTTP ${response.status}).`;
+    throw new ApiError(message, response.status);
+  }
+
+  let payload: { error?: string; message?: string } & T;
+  try {
+    payload = JSON.parse(responseText) as { error?: string; message?: string } & T;
+  } catch {
+    throw new ApiError(`The API returned invalid JSON for ${path} (HTTP ${response.status}).`, response.status);
+  }
+
   if (!response.ok) {
     throw new ApiError(payload.error || payload.message || 'The request could not be completed.', response.status);
   }
