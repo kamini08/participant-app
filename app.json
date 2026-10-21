@@ -6,12 +6,11 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "in.gov.aiia.ctms.participant",
       "buildNumber": "1",
-      "deploymentTarget": "15.0",
+      "deploymentTarget": "16.4",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to record medication verification videos for clinical trial adherence monitoring.",
         "NSMicrophoneUsageDescription": "This app uses the microphone for audio/video consent recording as required by clinical trial regulations.",
@@ -45,11 +44,18 @@
         "WAKE_LOCK",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_CAMERA",
-        "FOREGROUND_SERVICE_MICROPHONE"
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
       ],
-      "config": {
-        "cleartextTraffic": false
-      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -64,26 +70,25 @@
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "15.0"
+            "deploymentTarget": "16.4"
           },
           "android": {
-            "compileSdkVersion": 34,
-            "targetSdkVersion": 34,
-            "minSdkVersion": 24
+            "compileSdkVersion": 37,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 24,
+            "usesCleartextTraffic": false
           }
         }
       ]
     ],
-    "extra": {
-      "eas": {
-        "projectId": "your-project-id"
-      }
-    },
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/your-project-id"
-    }
+    "extra": {
+      "eas": {
+        "projectId": "ce3724a3-5b2c-44c5-b668-e699646137f0"
+      }
+    },
+    "owner": "kamini08"
   }
 }

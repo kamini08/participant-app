@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 5.9.0"
+    "version": ">= 5.9.0",
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -24,7 +25,7 @@
         "simulator": false
       },
       "android": {
-        "buildType": "aab"
+        "buildType": "apk"
       },
       "env": {
         "NODE_ENV": "staging",
@@ -35,11 +36,10 @@
     "production": {
       "distribution": "store",
       "ios": {
-        "simulator": false,
-        "enterprise": false
+        "simulator": false
       },
       "android": {
-        "buildType": "aab"
+        "buildType": "app-bundle"
       },
       "env": {
         "NODE_ENV": "production",
