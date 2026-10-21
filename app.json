@@ -1,0 +1,89 @@
+{
+  "expo": {
+    "name": "AIIA CTMS - Participant",
+    "slug": "aiia-ctms-participant",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "in.gov.aiia.ctms.participant",
+      "buildNumber": "1",
+      "deploymentTarget": "15.0",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to record medication verification videos for clinical trial adherence monitoring.",
+        "NSMicrophoneUsageDescription": "This app uses the microphone for audio/video consent recording as required by clinical trial regulations.",
+        "NSFaceIDUsageDescription": "This app uses Face ID for secure biometric authentication to protect your clinical trial data.",
+        "NSLocalNetworkUsageDescription": "This app uses local network for secure communication with the clinical trial management system.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "associatedDomains": [
+        "applinks:app.aiia-ctms.in"
+      ],
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "in.gov.aiia.ctms.participant",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_CAMERA",
+        "FOREGROUND_SERVICE_MICROPHONE"
+      ],
+      "config": {
+        "cleartextTraffic": false
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-local-authentication",
+      "expo-camera",
+      "expo-media-library",
+      "expo-secure-store",
+      "expo-notifications",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.0"
+          },
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 24
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/your-project-id"
+    }
+  }
+}
