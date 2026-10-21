@@ -19,9 +19,10 @@ type SurveyAnswer = string | number | boolean | null;
 interface SurveyQuestion {
   id: string;
   text: string;
-  type: 'scale' | 'boolean' | 'text';
+  type: 'scale' | 'boolean' | 'text' | 'choice';
   required: boolean;
   scaleLabels?: { min: string; max: string };
+  options?: string[];
 }
 
 interface Survey {
@@ -45,7 +46,13 @@ interface ApiSurvey {
   responses: Record<string, unknown>;
 }
 
-export default function SurveysScreen() {
+interface SurveysScreenProps {
+  navigation: {
+    navigate: (route: string) => void;
+  };
+}
+
+export default function SurveysScreen({ navigation }: SurveysScreenProps) {
   const { t } = useAuth();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [activeSurvey, setActiveSurvey] = useState<Survey | null>(null);
@@ -58,70 +65,6 @@ export default function SurveysScreen() {
   }, []);
 
   const loadSurveys = async () => {
-    const today = new Date().toISOString().split('T')[0];
-
-    const templates: Survey[] = [
-      {
-        id: 'daily-1',
-        title: t('dailySurvey'),
-        type: 'daily',
-        description: 'Rate your symptoms and overall wellbeing for today',
-        status: 'pending',
-        dueDate: today,
-        questions: [
-          { id: 'q1', text: 'How would you rate your overall health today?', type: 'scale', required: true, scaleLabels: { min: 'Very Poor', max: 'Excellent' } },
-          { id: 'q2', text: 'How is your energy level?', type: 'scale', required: true, scaleLabels: { min: 'Very Low', max: 'Very High' } },
-          { id: 'q3', text: 'Rate your pain level', type: 'scale', required: true, scaleLabels: { min: 'No Pain', max: 'Severe Pain' } },
-          { id: 'q4', text: 'How well did you sleep last night?', type: 'scale', required: true, scaleLabels: { min: 'Very Poorly', max: 'Very Well' } },
-          { id: 'q5', text: 'Rate your appetite', type: 'scale', required: true, scaleLabels: { min: 'Very Poor', max: 'Excellent' } },
-          { id: 'q6', text: 'Any new symptoms since yesterday?', type: 'boolean', required: true },
-          { id: 'q7', text: 'If yes, please describe', type: 'text', required: false },
-        ],
-      },
-      {
-        id: 'weekly-1',
-        title: t('weeklySurvey'),
-        type: 'weekly',
-        description: 'Weekly assessment of your health and treatment experience',
-        status: 'pending',
-        dueDate: today,
-        questions: [
-          { id: 'q1', text: 'Overall, how has your week been?', type: 'scale', required: true, scaleLabels: { min: 'Very Difficult', max: 'Very Good' } },
-          { id: 'q2', text: 'How has the treatment affected your daily activities?', type: 'scale', required: true, scaleLabels: { min: 'Severely Limited', max: 'No Limitation' } },
-          { id: 'q3', text: 'Rate your mood this week', type: 'scale', required: true, scaleLabels: { min: 'Very Low', max: 'Very Positive' } },
-          { id: 'q4', text: 'How satisfied are you with the study communication?', type: 'scale', required: true, scaleLabels: { min: 'Very Dissatisfied', max: 'Very Satisfied' } },
-          { id: 'q5', text: 'Any concerns about continuing the study?', type: 'boolean', required: true },
-        ],
-      },
-      {
-        id: 'energy-1',
-        title: t('energyLevelSurvey'),
-        type: 'energy',
-        description: 'Daily energy level tracking',
-        status: 'pending',
-        dueDate: today,
-        questions: [
-          { id: 'q1', text: 'Morning energy level (upon waking)', type: 'scale', required: true, scaleLabels: { min: 'Exhausted', max: 'Energized' } },
-          { id: 'q2', text: 'Midday energy level', type: 'scale', required: true, scaleLabels: { min: 'Exhausted', max: 'Energized' } },
-          { id: 'q3', text: 'Evening energy level', type: 'scale', required: true, scaleLabels: { min: 'Exhausted', max: 'Energized' } },
-        ],
-      },
-      {
-        id: 'side-effect-1',
-        title: t('sideEffectSurvey'),
-        type: 'side-effect',
-        description: 'Weekly side effect assessment',
-        status: 'pending',
-        dueDate: today,
-        questions: [
-          { id: 'q1', text: 'Nausea severity', type: 'scale', required: true, scaleLabels: { min: 'None', max: 'Severe' } },
-          { id: 'q2', text: 'Fatigue severity', type: 'scale', required: true, scaleLabels: { min: 'None', max: 'Severe' } },
-          { id: 'q3', text: 'Headache severity', type: 'scale', required: true, scaleLabels: { min: 'None', max: 'Severe' } },
-          { id: 'q4', text: 'Overall discomfort', type: 'scale', required: true, scaleLabels: { min: 'None', max: 'Severe' } },
-        ],
-      },
-    ];
-
     try {
       const { surveys: records } = await apiRequest<{ surveys: ApiSurvey[] }>('/api/participant-app/surveys');
       setSurveys(records.map(record => {
@@ -129,20 +72,22 @@ export default function SurveysScreen() {
           : record.surveyType === 'SIDE_EFFECT' ? 'side-effect'
             : record.surveyType === 'ENERGY_LEVEL' ? 'energy'
               : record.surveyType === 'DAILY' ? 'daily' : 'other';
-        const template = templates.find(item => item.type === type);
+        const title = type === 'daily' ? t('dailySurvey')
+          : type === 'weekly' ? t('weeklySurvey')
+            : type === 'side-effect' ? t('sideEffectSurvey')
+              : type === 'energy' ? t('energyLevelSurvey')
+                : record.surveyType.replaceAll('_', ' ');
         const storedResponses = Object.fromEntries(
           Object.entries(record.responses || {}).filter((entry): entry is [string, SurveyAnswer] =>
             entry[1] === null || ['string', 'number', 'boolean'].includes(typeof entry[1])
           )
         );
         return {
-          ...(template || {
-            title: record.surveyType.replaceAll('_', ' '),
-            type,
-            description: 'Study assessment',
-            questions: [],
-          }),
           id: record.id,
+          title,
+          type,
+          description: 'Study assessment',
+          questions: [],
           dueDate: record.scheduledDate,
           status: record.status === 'COMPLETED' ? 'completed'
             : record.status === 'IN_PROGRESS' ? 'in-progress'
@@ -164,13 +109,16 @@ export default function SurveysScreen() {
         : 'This survey is no longer available. Please contact your study team if you need help.');
       return;
     }
-    if (survey.questions.length === 0) {
-      Alert.alert('Survey unavailable', 'This survey type has no questionnaire configured in the app. Please contact your study team.');
-      return;
-    }
     try {
+      const { questions } = await apiRequest<{ questions: SurveyQuestion[] }>(
+        `/api/participant-app/surveys/${survey.id}/questionnaire`
+      );
+      if (questions.length === 0) {
+        Alert.alert('Survey unavailable', 'This survey has no questions configured yet. Please contact your study team.');
+        return;
+      }
       await apiRequest(`/api/participant-app/surveys/${survey.id}/start`, { method: 'POST' });
-      setActiveSurvey({ ...survey, status: 'in-progress' });
+      setActiveSurvey({ ...survey, questions, status: 'in-progress' });
       setCurrentQuestionIndex(0);
       setResponses(survey.responses || {});
     } catch (error) {
@@ -216,7 +164,9 @@ export default function SurveysScreen() {
             : s
         ));
         setActiveSurvey(null);
-        Alert.alert('Success', 'Your survey response has been saved.');
+        Alert.alert('Thank you', 'Thank you for your feedback!', [
+          { text: 'OK', onPress: () => navigation.navigate('Dashboard') },
+        ]);
       } catch (error) {
         Alert.alert('Could not submit survey', error instanceof Error ? error.message : 'Please try again.');
       } finally {
@@ -335,6 +285,27 @@ export default function SurveysScreen() {
                     No
                   </Text>
                 </TouchableOpacity>
+              </View>
+            )}
+
+            {question.type === 'choice' && (
+              <View style={styles.choiceContainer}>
+                {(question.options || []).map(option => {
+                  const selected = responses[question.id] === option;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      style={[styles.choiceButton, selected && styles.choiceButtonActive]}
+                      onPress={() => handleResponse(question.id, option)}
+                    >
+                      <Text style={[styles.choiceButtonText, selected && styles.choiceButtonTextActive]}>
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
 
@@ -773,6 +744,29 @@ const styles = StyleSheet.create({
   },
   booleanButtonTextActive: {
     color: '#3b82f6',
+  },
+  choiceContainer: {
+    gap: 10,
+    marginTop: 16,
+  },
+  choiceButton: {
+    padding: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff',
+  },
+  choiceButtonActive: {
+    backgroundColor: '#e9f5f1',
+    borderColor: '#16836b',
+  },
+  choiceButtonText: {
+    color: '#374151',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  choiceButtonTextActive: {
+    color: '#16705d',
   },
   textInput: {
     marginTop: 12,

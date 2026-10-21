@@ -13,7 +13,6 @@
       "deploymentTarget": "16.4",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to record medication verification videos for clinical trial adherence monitoring.",
-        "NSMicrophoneUsageDescription": "This app uses the microphone for audio/video consent recording as required by clinical trial regulations.",
         "NSFaceIDUsageDescription": "This app uses Face ID for secure biometric authentication to protect your clinical trial data.",
         "NSLocalNetworkUsageDescription": "This app uses local network for secure communication with the clinical trial management system.",
         "ITSAppUsesNonExemptEncryption": false
@@ -36,7 +35,6 @@
       },
       "permissions": [
         "CAMERA",
-        "RECORD_AUDIO",
         "USE_BIOMETRIC",
         "USE_FINGERPRINT",
         "INTERNET",
@@ -44,11 +42,9 @@
         "WAKE_LOCK",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_CAMERA",
-        "FOREGROUND_SERVICE_MICROPHONE",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
@@ -62,7 +58,13 @@
     },
     "plugins": [
       "expo-local-authentication",
-      "expo-camera",
+      [
+        "expo-camera",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-media-library",
       "expo-secure-store",
       "expo-notifications",

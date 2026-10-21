@@ -43,6 +43,7 @@
       },
       "env": {
         "NODE_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://aiia-ctms-api-kmjz.onrender.com",
         "API_URL": "https://api.aiia-ctms.in",
         "WS_URL": "wss://api.aiia-ctms.in"
       }

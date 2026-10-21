@@ -24,6 +24,7 @@ interface Visit {
   title: string;
   type: string;
   date: string;
+  scheduledAt: string;
   time: string;
   location: string;
   status: 'scheduled' | 'completed' | 'missed' | 'in-progress';
@@ -100,6 +101,7 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
         title: `${visit.visitNumber ? `Visit ${visit.visitNumber} - ` : ''}${String(visit.visitType).replaceAll('_', ' ')}`,
         type: String(visit.visitType).replaceAll('_', ' '),
         date: dateKey(visit.scheduledDate),
+        scheduledAt: visit.scheduledDate,
         time: new Date(visit.scheduledDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
         location: visit.Site?.name || visit.Site?.address || 'Study site',
         status: visit.status === 'COMPLETED' ? 'completed' : visit.status === 'MISSED' || visit.status === 'CANCELLED' ? 'missed' : visit.status === 'IN_PROGRESS' || visit.status === 'CHECKED_IN' ? 'in-progress' : 'scheduled',
@@ -219,6 +221,9 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
   const todayVisits = visits.filter(v => v.date === today);
   const upcomingVisits = visits.filter(v => v.date !== today);
   const pendingSurveys = surveys.filter(s => s.status === 'pending');
+  const nextAppointment = [...visits]
+    .filter(visit => visit.status === 'scheduled' || visit.status === 'in-progress')
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
   const pendingNotifications = notifications.filter(n => !n.read);
   const displayedNotifications = showAllNotifications ? notifications : pendingNotifications.slice(0, 3);
 
@@ -261,6 +266,42 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.featureCards}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            style={[styles.featureCard, styles.appointmentFeature]}
+            onPress={() => nextAppointment && handleVisitPress(nextAppointment)}
+          >
+            <Text style={styles.featureEyebrow}>YOUR NEXT APPOINTMENT</Text>
+            <Text style={styles.featureTitle}>
+              {nextAppointment ? nextAppointment.title : 'No appointment scheduled'}
+            </Text>
+            <Text style={styles.featureDetail}>
+              {nextAppointment
+                ? `${formatDate(nextAppointment.date)} · ${nextAppointment.time}`
+                : 'Your care team will let you know when one is planned.'}
+            </Text>
+            {nextAppointment?.location ? (
+              <Text style={styles.featureDetail}>{nextAppointment.location}</Text>
+            ) : null}
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            style={[styles.featureCard, styles.tasksFeature]}
+            onPress={() => navigation.navigate('Surveys')}
+          >
+            <Text style={styles.featureEyebrow}>PENDING TASKS</Text>
+            <Text style={styles.featureTitle}>
+              {pendingSurveys.length === 0
+                ? 'You’re all caught up'
+                : `${pendingSurveys.length} ${pendingSurveys.length === 1 ? 'Survey' : 'Surveys'} to Complete`}
+            </Text>
+            <Text style={styles.featureDetail}>
+              {pendingSurveys.length === 0 ? 'No tasks need your attention right now.' : 'Tap to continue your questionnaire.'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {(pendingNotifications.length > 0 || showAllNotifications) && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -403,8 +444,8 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
             <Text style={styles.quickActionTitle}>{t('medicationVerification')}</Text>
             <Text style={styles.quickActionSubtitle}>{t('recordMedicationIntake')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionCard} onPress={() => navigation.navigate('SideEffects')}>
-            <Text style={styles.quickActionIcon}>⚠️</Text>
+          <TouchableOpacity style={styles.quickActionCard} onPress={() => navigation.navigate('SymptomTracker')}>
+            <Text style={styles.quickActionIcon}>🩺</Text>
             <Text style={styles.quickActionTitle}>{t('sideEffects')}</Text>
             <Text style={styles.quickActionSubtitle}>{t('reportSideEffect')}</Text>
           </TouchableOpacity>
@@ -414,6 +455,18 @@ export default function DashboardScreen({ navigation }: DashboardScreenProps) {
             <Text style={styles.quickActionSubtitle}>{t('dailySurvey')} & {t('weeklySurvey')}</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => navigation.navigate('EmergencyReport')}
+          style={styles.emergencyAction}
+        >
+          <Text style={styles.emergencyActionIcon}>🚨</Text>
+          <View style={styles.emergencyActionCopy}>
+            <Text style={styles.emergencyActionTitle}>Urgent concern or need emergency help?</Text>
+            <Text style={styles.emergencyActionSubtitle}>Contact emergency services or notify your study team</Text>
+          </View>
+          <Text style={styles.emergencyActionArrow}>›</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -423,6 +476,41 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
+  },
+  featureCards: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  featureCard: {
+    borderRadius: 18,
+    padding: 20,
+    borderWidth: 1,
+  },
+  appointmentFeature: {
+    backgroundColor: '#e9f5f1',
+    borderColor: '#c8e4da',
+  },
+  tasksFeature: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+  },
+  featureEyebrow: {
+    color: '#55786d',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  featureTitle: {
+    color: '#17324d',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 5,
+  },
+  featureDetail: {
+    color: '#64748b',
+    fontSize: 14,
+    lineHeight: 20,
   },
   header: {
     backgroundColor: 'white',
@@ -698,5 +786,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#6b7280',
     textAlign: 'center',
+  },
+  emergencyAction: {
+    minHeight: 82,
+    marginTop: 2,
+    marginBottom: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f0b7b1',
+    backgroundColor: '#fff4f2',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  emergencyActionIcon: {
+    fontSize: 26,
+    marginRight: 12,
+  },
+  emergencyActionCopy: {
+    flex: 1,
+  },
+  emergencyActionTitle: {
+    color: '#8e211d',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  emergencyActionSubtitle: {
+    color: '#7b4541',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  emergencyActionArrow: {
+    color: '#9f2d28',
+    fontSize: 28,
+    fontWeight: '400',
+    marginLeft: 8,
   },
 });

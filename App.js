@@ -4,16 +4,19 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import DashboardScreen from './src/screens/DashboardScreen';
+import EmergencyReportScreen from './src/screens/EmergencyReportScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import MedicationVerificationScreen from './src/screens/MedicationVerificationScreen';
-import SideEffectsScreen from './src/screens/SideEffectsScreen';
+import RemindersScreen from './src/screens/RemindersScreen';
+import SymptomTrackerScreen from './src/screens/SymptomTrackerScreen';
 import SurveysScreen from './src/screens/SurveysScreen';
 
 const tabs = [
   { id: 'dashboard', label: 'dashboard', icon: '🏠' },
   { id: 'surveys', label: 'surveys', icon: '📝' },
+  { id: 'reminders', label: 'notificationsTitle', icon: '🔔' },
+  { id: 'symptoms', label: 'sideEffects', icon: '🩺' },
   { id: 'medication', label: 'medication', icon: '💊' },
-  { id: 'sideEffects', label: 'sideEffects', icon: '🩺' },
 ];
 
 function ParticipantApp() {
@@ -39,8 +42,11 @@ function ParticipantApp() {
       Dashboard: 'dashboard',
       Surveys: 'surveys',
       SurveyScreen: 'surveys',
+      Reminders: 'reminders',
+      SymptomTracker: 'symptoms',
+      SideEffects: 'symptoms',
+      EmergencyReport: 'emergency',
       MedicationVerification: 'medication',
-      SideEffects: 'sideEffects',
     };
 
     if (tabRoutes[route]) {
@@ -53,9 +59,11 @@ function ParticipantApp() {
 
   const screen = {
     dashboard: <DashboardScreen navigation={{ navigate }} />,
-    surveys: <SurveysScreen />,
+    surveys: <SurveysScreen navigation={{ navigate }} />,
+    reminders: <RemindersScreen />,
     medication: <MedicationVerificationScreen />,
-    sideEffects: <SideEffectsScreen />,
+    symptoms: <SymptomTrackerScreen />,
+    emergency: <EmergencyReportScreen />,
   }[activeTab];
 
   return (
@@ -190,7 +198,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     color: '#6b7787',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   selectedTabText: {

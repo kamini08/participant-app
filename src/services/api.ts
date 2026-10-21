@@ -12,6 +12,7 @@ interface AuthTokens {
 interface ApiOptions {
   method?: string;
   body?: unknown;
+  formData?: FormData;
   auth?: boolean;
 }
 
@@ -60,7 +61,7 @@ async function sendRequest<T>(path: string, options: ApiOptions, token?: string)
   const response = await fetch(getApiUrl(path), {
     method: options.method || 'GET',
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: options.formData ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
   });
 
   if (response.status === 204) return undefined as T;
